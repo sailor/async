@@ -21,6 +21,7 @@
 require_relative 'logger'
 require_relative 'task'
 require_relative 'wrapper'
+require_relative 'scheduler'
 
 require 'nio'
 require 'timers'
@@ -80,9 +81,17 @@ module Async
 			@ready = []
 			@running = []
 			
+			if Scheduler.supported?
+				@scheduler = Scheduler.new(self)
+			else
+				@scheduler = nil
+			end
+			
 			@interrupted = false
 			@guard = Mutex.new
 		end
+		
+		attr :scheduler
 		
 		def logger
 			@logger ||= Console.logger
@@ -227,6 +236,7 @@ module Async
 		def run(*arguments, &block)
 			raise RuntimeError, 'Reactor has been closed' if @selector.nil?
 			
+			@scheduler&.set!
 			initial_task = self.async(*arguments, &block) if block_given?
 			
 			while self.run_once
@@ -235,6 +245,7 @@ module Async
 			
 			return initial_task
 		ensure
+			@scheduler&.clear!
 			logger.debug(self) {"Exiting run-loop because #{$! ? $! : 'finished'}."}
 		end
 		
